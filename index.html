@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Devlet-i Aile Yönetim Mekanizması</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 p-4 font-sans selection:bg-indigo-500/30">
+
+    <main class="max-w-2xl mx-auto space-y-6">
+        
+        <header class="bg-slate-800 p-4 rounded-2xl border border-slate-700/60 flex justify-between items-center shadow-xl">
+            <div>
+                <h1 class="text-base font-black tracking-wider text-indigo-400">DEVLET-İ AİLE v1.4.0</h1>
+                <p class="text-xs text-slate-400">Aktif Cihaz: <span id="current-user-label" class="text-amber-400 font-bold">Yükleniyor...</span></p>
+            </div>
+            <div id="system-mode" class="px-3 py-1 bg-emerald-950 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                Olağan Dönem
+            </div>
+        </header>
+
+        <section class="bg-slate-800 p-5 rounded-2xl border border-slate-700/60 shadow-xl">
+            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">📋 Günlük Operasyon Masası</h2>
+            <div class="space-y-3" id="tasks-list">
+                </div>
+            <div class="mt-4 pt-3 border-t border-slate-700/50 flex gap-2">
+                <button onclick="tetikleSaglikKrizi()" class="w-full bg-rose-950/40 text-rose-400 border border-rose-900/50 hover:bg-rose-900/40 font-bold py-2 rounded-xl text-xs transition">
+                    🚨 Sağlık Protokolü Bildir
+                </button>
+                <button onclick="sistemiSifirla()" class="w-full bg-slate-700/50 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-xl text-xs transition">
+                    Normal Moda Dön
+                </button>
+            </div>
+        </section>
+
+        <section class="bg-slate-800 p-5 rounded-2xl border border-slate-700/60 shadow-xl">
+            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">📊 Maliye & Bütçe Defteri</h2>
+            <div class="p-4 bg-slate-950 rounded-xl mb-4 border border-slate-800">
+                <span class="text-[10px] uppercase tracking-wider text-slate-500 block mb-1">Kasadan Çıkan Toplam Gider</span>
+                <div id="total-budget" class="text-3xl font-mono font-black text-rose-400">0 TL</div>
+            </div>
+            
+            <div id="admin-budget-form" class="hidden space-y-2">
+                <div class="flex gap-2">
+                    <input id="budget-amount" type="number" placeholder="Tutar (TL)" class="bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm w-1/3 focus:outline-none focus:border-indigo-500">
+                    <input id="budget-desc" type="text" placeholder="Harcama Detayı (Örn: Mazot, Tohum...)" class="bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm w-2/3 focus:outline-none focus:border-indigo-500">
+                </div>
+                <button onclick="butceEkle()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-xl text-xs transition shadow-lg shadow-emerald-900/20">
+                    Harcamayı Deftere İşle
+                </button>
+            </div>
+        </section>
+
+        <section class="bg-slate-800 p-5 rounded-2xl border border-slate-700/60 shadow-xl">
+            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">🏛️ Meclis Taslak Oylama Paneli</h2>
+            
+            <div id="active-proposal" class="p-4 bg-slate-950 rounded-xl border border-indigo-500/20 mb-4">
+                </div>
+
+            <div id="admin-proposal-form" class="hidden pt-3 border-t border-slate-700/50">
+                <input id="proposal-text" type="text" placeholder="Gündeme Alınacak Yeni Meclis Kararı..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm mb-2 focus:outline-none focus:border-indigo-500">
+                <button onclick="yasaTaslagiYayinla()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl text-xs transition shadow-lg shadow-indigo-900/20">
+                    Meclise Yeni Taslak Gönder
+                </button>
+            </div>
+        </section>
+
+        <div class="text-center">
+            <button onclick="localStorage.clear(); location.reload();" class="text-[10px] text-slate-600 hover:text-slate-400 transition underline">Cihaz Kimliğini Sıfırla</button>
+        </div>
+
+    </main>
+
+    <script>
+        // Senkronize Veri Modeli
+        let devletVerisi = {
+            sistemModu: "Olağan Dönem",
+            toplamGider: 0,
+            aktifTaslak: "Devlet bütçe optimizasyonu protokolünün devreye alınması.",
+            oylar: { 1: false, 2: false, 3: false, 4: false, 5: false },
+            uyeler: {
+                1: { id: 1, isim: "Baba (Kral)", rol: "Monark / Yürütme Başı", bonus: true, hasta: false },
+                2: { id: 2, isim: "Anne", rol: "İç İşleri / Mali Denetim", bonus: true, hasta: false },
+                3: { id: 3, isim: "Şükran", rol: "Meclis Üyesi / Lojistik Destek", bonus: false, hasta: false },
+                4: { id: 4, isim: "Ayça", rol: "Meclis Üyesi / Operasyon Takip", bonus: false, hasta: false },
+                5: { id: 5, isim: "Hulusi", rol: "Sistem Mimarı / Yasama İradesi", bonus: false, hasta: false }
+            },
+            gorevler: [
+                { id: 101, tanim: "Rutin Saha, Tarla ve Lojistik Kontrolü", sorumluId: 1, orijinalSorumlu: 1 },
+                { id: 102, tanim: "Ev İçi Düzen ve Tedarik Zinciri Yönetimi", sorumluId: 2, orijinalSorumlu: 2 },
+                { id: 103, tanim: "Günlük Rutin Operasyonlar ve Yardımcı Görevler", sorumluId: 3, orijinalSorumlu: 3 },
+                { id: 104, tanim: "Hafif Takip ve Sistem Verimlilik Kontrolü", sorumluId: 4, orijinalSorumlu: 4 }
+            ]
+        };
+
+        let aktifCihazId = null;
+
+        // Canlı Firebase Entegrasyonu
+        const firebaseConfig = {
+            databaseURL: "https://devlet-i-aile-default-rtdb.europe-west1.firebasedatabase.app"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        function sistemBaslat() {
+            let kaydedilenId = localStorage.getItem('aile_paneli_user_id');
+
+            if (!kaydedilenId) {
+                let secim = prompt("DEVLET-İ AİLE PANELİ\nLütfen cihaz sahibini seçin:\n1 - Baba (Kral)\n2 - Anne\n3 - Şükran\n4 - Ayça\n5 - Hulusi");
+                if (["1", "2", "3", "4", "5"].includes(secim)) {
+                    localStorage.setItem('aile_paneli_user_id', secim);
+                    kaydedilenId = secim;
+                } else {
+                    alert("Kimlik doğrulanamadı.");
+                    return;
+                }
+            }
+
+            aktifCihazId = parseInt(kaydedilenId);
+            document.getElementById('current-user-label').innerText = devletVerisi.uyeler[aktifCihazId].isim;
+
+            // Rol Tabanlı Yetkilendirme: Sadece Hulusi (5) girdi yapabilir
+            if (aktifCihazId === 5) {
+                document.getElementById('admin-budget-form').classList.remove('hidden');
+                document.getElementById('admin-proposal-form').classList.remove('hidden');
+            }
+
+            // Canlı Dinleme Motoru
+            db.ref('devletVerisi').on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    devletVerisi = data;
+                    arayuzCiz();
+                }
+            });
+        }
+
+        function arayuzCiz() {
+            const modBar = document.getElementById('system-mode');
+            modBar.innerText = devletVerisi.sistemModu;
+            if(devletVerisi.sistemModu === "Olağan Dönem") {
+                modBar.className = "px-3 py-1 bg-emerald-950 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-bold uppercase tracking-wider";
+            } else {
+                modBar.className = "px-3 py-1 bg-rose-950 text-rose-400 border border-rose-500/30 rounded-full text-[10px] font-bold uppercase tracking-wider";
+            }
+
+            // Görev Çizimi
+            const tasksDiv = document.getElementById('tasks-list');
+            tasksDiv.innerHTML = '';
+            devletVerisi.gorevler.forEach(g => {
+                const sorumlu = devletVerisi.uyeler[g.sorumluId];
+                tasksDiv.innerHTML += `
+                    <div class="p-3 bg-slate-950 rounded-xl border ${sorumlu.hasta ? 'border-rose-900/50' : 'border-slate-800'} flex justify-between items-center">
+                        <div>
+                            <p class="text-sm font-semibold">${g.tanim}</p>
+                            <p class="text-xs text-slate-400">Sorumlu: <span class="text-indigo-400 font-medium">${sorumlu.isim}</span></p>
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Bütçe Çizimi
+            document.getElementById('total-budget').innerText = `${devletVerisi.toplamGider.toLocaleString('tr-TR')} TL`;
+
+            // %10 Yaş Bonusu ve Meclis Motoru
+            let toplamOyGucu = 0;
+            let kabulOyGucu = 0;
+
+            Object.keys(devletVerisi.uyeler).forEach(id => {
+                const u = devletVerisi.uyeler[id];
+                const oyGucu = u.bonus ? 110 : 100; // Baba ve Anne için 110, diğerleri 100
+                toplamOyGucu += oyGucu;
+                if (devletVerisi.oylar[id]) kabulOyGucu += oyGucu;
+            });
+
+            let oran = (kabulOyGucu / toplamOyGucu) * 100;
+            const cihazOyDurumu = devletVerisi.oylar[aktifCihazId];
+
+            const proposalDiv = document.getElementById('active-proposal');
+            proposalDiv.innerHTML = `
+                <p class="text-sm font-medium mb-4 text-slate-200">"${devletVerisi.aktifTaslak}"</p>
+                <div class="flex justify-between items-center text-xs mb-4">
+                    <span class="text-slate-400">Meclis Onay Gücü: <strong class="text-indigo-400">%${oran.toFixed(1)}</strong></span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${oran >= 65 ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'}">
+                        ${oran >= 65 ? 'Konsensüs Sağlandı' : 'Baraj Altı (%65 Eşiği)'}
+                    </span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="oyVer(true)" class="w-full ${cihazOyDurumu === true ? 'bg-emerald-600 font-bold' : 'bg-slate-800 text-slate-400'} text-xs py-2 rounded-xl transition">EVET</button>
+                    <button onclick="oyVer(false)" class="w-full ${cihazOyDurumu === false ? 'bg-rose-600 font-bold' : 'bg-slate-800 text-slate-400'} text-xs py-2 rounded-xl transition">HAYIR</button>
+                </div>
+            `;
+        }
+
+        function veriyiYayinla() {
+            db.ref('devletVerisi').set(devletVerisi);
+        }
+
+        function oyVer(durum) {
+            devletVerisi.oylar[aktifCihazId] = durum;
+            veriyiYayinla();
+        }
+
+        function butceEkle() {
+            const amount = parseFloat(document.getElementById('budget-amount').value);
+            if (amount) {
+                devletVerisi.toplamGider += amount;
+                document.getElementById('budget-amount').value = '';
+                document.getElementById('budget-desc').value = '';
+                veriyiYayinla();
+            }
+        }
+
+        function yasaTaslagiYayinla() {
+            const text = document.getElementById('proposal-text').value;
+            if (text) {
+                devletVerisi.aktifTaslak = text;
+                devletVerisi.oylar = { 1: false, 2: false, 3: false, 4: false, 5: false };
+                document.getElementById('proposal-text').value = '';
+                veriyiYayinla();
+            }
+        }
+
+        function tetikleSaglikKrizi() {
+            devletVerisi.sistemModu = "Sağlık Protokolü!";
+            devletVerisi.uyeler[aktifCihazId].hasta = true;
+            devletVerisi.gorevler.forEach(g => {
+                if(g.sorumluId === aktifCihazId) {
+                    g.sorumluId = (aktifCihazId % 5) + 1; // Otomatik yedeklilik
+                }
+            });
+            veriyiYayinla();
+        }
+
+        function sistemiSifirla() {
+            devletVerisi.sistemModu = "Olağan Dönem";
+            Object.keys(devletVerisi.uyeler).forEach(id => {
+                devletVerisi.uyeler[id].hasta = false;
+            });
+            devletVerisi.gorevler.forEach(g => {
+                g.sorumluId = g.orijinalSorumlu;
+            });
+            veriyiYayinla();
+        }
+
+        sistemBaslat();
+    </script>
+</body>
+</html>
