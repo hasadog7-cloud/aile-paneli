@@ -1,91 +1,237 @@
-// Aile ERM v1.11.0 - Focused UI & Strict Responsibility Layer
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aile ERM v1.11.0</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        /* Hastalıklı/Verimsiz üye ve kritik durumlar için özel görsel geri bildirim sınıfları */
+        .system-degraded { background-color: rgba(239, 68, 68, 0.15); border: 1px solid rgb(239, 68, 68); }
+        .system-stable { background-color: rgba(34, 197, 94, 0.15); border: 1px solid rgb(34, 197, 94); }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
 
-// Görev Öncelik Skalası ve Yapı Tanımı
-const GOREV_SEVIYESI = {
-    RUTIN: "rutin",
-    KRITIK: "kritik" // Herkesin ekranında zorunlu gözükecek seviye
-};
-
-// 1. Akıllı Performans Analiz Motoru ("Hastalıklı Kişi" Tespiti)
-function analizEtAileSagligi(tumGorevler) {
-    let uyeIstatistikleri = {};
-
-    // Tüm görev geçmişini tara
-    Object.values(tumGorevler).forEach(gorev => {
-        if (!uyeIstatistikleri[gorev.assignedTo]) {
-            uyeIstatistikleri[gorev.assignedTo] = { toplam: 0, patlayan: 0 };
-        }
-        
-        uyeIstatistikleri[gorev.assignedTo].toplam++;
-        if (gorev.status === "zaman-asimi") {
-            uyeIstatistikleri[gorev.assignedTo].patlayan++;
-        }
-    });
-
-    let riskliUyeler = {};
-    Object.keys(uyeIstatistikleri).forEach(uye => {
-        const stats = uyeIstatistikleri[uye];
-        const failRate = stats.toplam > 0 ? (stats.patlayan / stats.toplam) : 0;
-        
-        // Görevlerin %30'undan fazlasını patlatan üye riskli (hastalıklı) kabul edilir
-        riskliUyeler[uye] = failRate >= 0.30; 
-    });
-
-    return riskliUyeler; // Örn: { "baba": false, "alexa": false, "X_Uye": true }
-}
-
-// 2. Odaklanmış İlk Panel Filtreleme Motoru (Görünüm Kuralları)
-function ilkPanelIcinGorevleriFiltrele(tumGorevler, aktifKullanici) {
-    return Object.keys(tumGorevler).reduce((acc, key) => {
-        const gorev = tumGorevler[key];
-        
-        // Kural 1: Görev kritikse HERKESTE gözükecek.
-        // Kural 2: Görev rutindeyse SADECE ilgili kişinin kendi ekranında gözükecek.
-        if (gorev.seviye === GOREV_SEVIYESI.KRITIK || gorev.assignedTo === aktifKullanici) {
-            acc[key] = gorev;
-        }
-        return acc;
-    }, {});
-}
-
-// 3. Katı Görev Yönetim Arayüzü (Devretme Fonksiyonu Yoktur)
-function renderGorevAksiyonlari(gorev, aktifKullanici) {
-    // Sadece görevin sahibi işlem yapabilir
-    if (gorev.assignedTo !== aktifKullanici) {
-        return `<span class="badge-info">Gözlemci Modu</span>`;
-    }
-
-    if (gorev.status === "aktif") {
-        // "Devret" butonu tamamen kaldırıldı. Sadece kapanış notuyla bitirme şansı var.
-        return `
-            <div class="action-block">
-                <input type="text" id="report-${gorev.id}" placeholder="Kapanış Rapor Notu giriniz..." required />
-                <button onclick="goreviKapat('${gorev.id}')" class="btn-success">Görevi Tamamla</button>
-            </div>
-        `;
-    }
-    
-    return `<span class="badge-secondary">${gorev.status.toUpperCase()}</span>`;
-}
-
-// 4. Detay Paneli Render Motoru (İnceleme Modu)
-function renderDetayAnalizPaneli(tumGorevler, riskliUyeler) {
-    const analizKonteyniri = document.getElementById("detay-analiz-odasi");
-    
-    let html = `
-        <div class="matrix-modal">
-            <h3>Aile Operasyonel Durum Analizi (Deep-Dive)</h3>
-            <div class="member-grid">
-                ${Object.keys(riskliUyeler).map(uye => `
-                    <div class="member-row ${riskliUyeler[uye] ? 'system-degraded' : 'system-stable'}">
-                        <span class="name">${uye.toUpperCase()}</span>
-                        <span class="status-tag">
-                            ${riskliUyeler[uye] ? '⚠️ KRİTİK PERFORMANS RİSKİ (HASTALIKLI)' : '✅ STABİL HAREKET'}
-                        </span>
-                    </div>
-                `).join('')}
-            </div>
+    <div id="app-root" class="p-4 max-w-6xl mx-auto">
         </div>
-    `;
-    analizKonteyniri.innerHTML = html;
-}
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script>
+        // =========================================================================
+        // 1. GLOBAL CONFIGURATION & SCOPE FIX (Hatanın Kökten Çözümü)
+        // =========================================================================
+        const currentYear = new Date().getFullYear(); // Konsoldaki ReferenceError'u çözen kritik satır
+        const MAX_LOG_SIZE = 50;
+
+        const dogumYillari = {
+            "baba": 1984,
+            "anne": 1984,
+            "dede": 1946,
+            "alexa": 2012
+        };
+
+        // State Engine
+        let appState = {
+            currentActiveUser: "alexa", // Default giriş yapan kullanıcı (dinamik değiştirilebilir)
+            isAuth: true,
+            oda_PIN: "1234" 
+        };
+
+        // Firebase Yapılandırması (Kendi config bilgilerinle değiştir)
+        const firebaseConfig = {
+            databaseURL: "https://hasadog7-cloud-default-rtdb.firebaseio.com/" 
+        };
+        
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        // =========================================================================
+        // 2. YENİ MANTIKSAL ÇEKİRDEK (Filtreleme, Devretme Yasağı, Performans Analizi)
+        // =========================================================================
+        
+        // Dinamik Oy Gücü Hesaplama
+        function oyGucuHesapla(userKey) {
+            const dogumYili = dogumYillari[userKey];
+            if (!dogumYili) return 100;
+            return 100 + (currentYear - dogumYili);
+        }
+
+        // Akıllı Performans Analiz Motoru ("Hastalıklı Kişi" Tespiti)
+        function analizEtAileSagligi(tumGorevler) {
+            let uyeIstatistikleri = {};
+            
+            Object.values(tumGorevler).forEach(gorev => {
+                if (!gorev.assignedTo) return;
+                if (!uyeIstatistikleri[gorev.assignedTo]) {
+                    uyeIstatistikleri[gorev.assignedTo] = { toplam: 0, patlayan: 0 };
+                }
+                uyeIstatistikleri[gorev.assignedTo].toplam++;
+                if (gorev.status === "zaman-asimi") {
+                    uyeIstatistikleri[gorev.assignedTo].patlayan++;
+                }
+            });
+
+            let riskliUyeler = {};
+            Object.keys(dogumYillari).forEach(uye => {
+                const stats = uyeIstatistikleri[uye] || { toplam: 0, patlayan: 0 };
+                const failRate = stats.toplam > 0 ? (stats.patlayan / stats.toplam) : 0;
+                // Görevlerinin %30'undan fazlasını zaman aşımına uğratan kişi riskli (hastalıklı) kabul edilir
+                riskliUyeler[uye] = failRate >= 0.30 && stats.toplam > 0;
+            });
+            return riskliUyeler;
+        }
+
+        // Odaklanmış Panel Filtreleme Motoru (Görünüm Kuralları)
+        function ilkPanelIcinGorevleriFiltrele(tumGorevler, aktifKullanici) {
+            let filtrelenmis = {};
+            Object.keys(tumGorevler).forEach(key => {
+                const gorev = tumGorevler[key];
+                // Kural: Görev KRİTİKSE herkeste gözükür, RUTİNSE sadece sahibinde gözükür.
+                if (gorev.seviye === "kritik" || gorev.assignedTo === aktifKullanici) {
+                    filtrelenmis[key] = gorev;
+                }
+            });
+            return filtrelenmis;
+        }
+
+        // =========================================================================
+        // 3. UI RENDER MOTORU & FIREBASE ENTEGRASYONU (Satır 232-334 Refaktörü)
+        // =========================================================================
+        
+        function arayuzCiz(filtrelenmisGorevler, riskliUyeler, tumGorevler) {
+            const root = document.getElementById("app-root");
+            
+            let htmlContext = `
+                <div class="space-y-6">
+                    <header class="flex justify-between items-center border-b border-slate-700 pb-4">
+                        <div>
+                            <h1 class="text-2xl font-bold text-indigo-400">Aile ERM v1.11.0</h1>
+                            <p class="text-sm text-slate-400">Aktif Kullanıcı: <span class="text-slate-200 font-semibold">${appState.currentActiveUser.toUpperCase()}</span></p>
+                        </div>
+                        <div class="text-sm bg-slate-800 p-2 rounded border border-slate-700">
+                            Senin Oy Gücün: <span class="text-emerald-400 font-bold">${oyGucuHesapla(appState.currentActiveUser)}</span>
+                        </div>
+                    </header>
+
+                    <section class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                        <h2 class="text-lg font-bold mb-4 text-slate-300 flex items-center gap-2">
+                            <span>📋 Ana Panel (Grevlerim & Kritik Görevler)</span>
+                        </h2>
+                        <div class="space-y-3">
+                            ${Object.keys(filtrelenmisGorevler).length === 0 ? '<p class="text-slate-500 text-sm">Aktif veya kritik görev bulunmuyor.</p>' : ''}
+                            
+                            ${Object.keys(filtrelenmisGorevler).map(key => {
+                                const g = filtrelenmisGorevler[key];
+                                const isKritik = g.seviye === "kritik";
+                                return `
+                                    <div class="p-3 rounded-lg ${isKritik ? 'border-l-4 border-amber-500 bg-slate-750' : 'bg-slate-900'} border border-slate-700 flex justify-between items-center">
+                                        <div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-semibold">${g.title}</span>
+                                                ${isKritik ? '<span class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded border border-amber-500/30">KRİTİK GÖREV</span>' : ''}
+                                            </div>
+                                            <p class="text-xs text-slate-400 mt-1">Sorumlu: ${g.assignedTo.toUpperCase()} | Durum: ${g.status}</p>
+                                        </div>
+                                        <div>
+                                            ${renderGorevAksiyonlari(key, g)}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </section>
+
+                    <section class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                        <details class="group">
+                            <summary class="list-none flex justify-between items-center font-bold text-slate-300 cursor-pointer select-none">
+                                <span>🔍 Detaylar: Aile Üyeleri & Performans Analizi</span>
+                                <span class="transition group-open:rotate-180">▼</span>
+                            </summary>
+                            
+                            <div class="mt-4 pt-4 border-t border-slate-700 space-y-4">
+                                <h3 class="text-sm font-semibold text-indigo-300">Sistem Sağlık ve Risk İndeksi</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    ${Object.keys(dogumYillari).map(uye => {
+                                        const isHastalikli = riskliUyeler[uye];
+                                        return `
+                                            <div class="p-3 rounded-lg ${isHastalikli ? 'system-degraded' : 'system-stable'} flex justify-between items-center">
+                                                <div>
+                                                    <span class="font-bold text-sm block">${uye.toUpperCase()}</span>
+                                                    <span class="text-xs text-slate-300">Oy Ağırlığı: ${oyGucuHesapla(uye)}</span>
+                                                </div>
+                                                <span class="text-xs px-2 py-1 rounded font-semibold ${isHastalikli ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}">
+                                                    ${isHastalikli ? '⚠️ PERFORMANS RİSKİ (HASTALIKLI)' : '✅ STABİL HAREKET'}
+                                                </span>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        </details>
+                    </section>
+                </div>
+            `;
+            root.innerHTML = htmlContext;
+        }
+
+        // Katı Görev Aksiyonları (Devret butonu kaldırıldı, kaçış yok)
+        function renderGorevAksiyonlari(taskId, g) {
+            if (g.assignedTo !== appState.currentActiveUser) {
+                return `<span class="text-xs bg-slate-800 text-slate-400 p-1.5 rounded border border-slate-700">Gözlemci Modu</span>`;
+            }
+
+            if (g.status === "aktif") {
+                return `
+                    <div class="flex gap-2 items-center">
+                        <input type="text" id="report-${taskId}" placeholder="Kapanış notu..." class="bg-slate-950 border border-slate-700 rounded p-1 text-xs text-slate-100 focus:outline-none focus:border-indigo-500" />
+                        <button onclick="goreviKapat('${taskId}')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded transition">Tamamla</button>
+                    </div>
+                `;
+            }
+            return `<span class="text-xs text-slate-400">${g.status.toUpperCase()}</span>`;
+        }
+
+        // Görev Kapatma Operasyonu (Zorunlu Kapanış Notu Kayıtlı)
+        function goreviKapat(taskId) {
+            const noteInput = document.getElementById(`report-${taskId}`);
+            if (!noteInput || !noteInput.value.trim()) {
+                alert("Mimarî Kural: Kapanış rapor notu girmeden görev kapatılamaz!");
+                return;
+            }
+
+            const kapanisNotu = noteInput.value.trim();
+            
+            db.ref(`gorevler/${taskId}`).update({
+                status: "tamamlandi",
+                reportNote: kapanisNotu,
+                resolvedAt: Date.now()
+            }).then(() => {
+                // Log bloating önlemli loglama tetiklenebilir
+                console.log(`Görev ${taskId} başarıyla kapatıldı.`);
+            });
+        }
+
+        // =========================================================================
+        // 4. MAIN FIREBASE SNAPSHOT LOOP (Satır 232 Akışı)
+        // =========================================================================
+        db.ref("gorevler").on("value", (snapshot) => {
+            const tumGorevler = snapshot.val() || {};
+            
+            // 1. Algoritmik analiz tetikle (Hastalıklı kişi bulma)
+            const riskliUyeler = analizEtAileSagligi(tumGorevler);
+            
+            // 2. Kullanıcı bazlı ve kritiklik tabanlı filtrele
+            const filtrelenmisGorevler = ilkPanelIcinGorevleriFiltrele(tumGorevler, appState.currentActiveUser);
+            
+            // 3. Güvenli şekilde DOM'a bas
+            arayuzCiz(filtrelenmisGorevler, riskliUyeler, tumGorevler);
+        });
+
+    </script>
+</body>
+</html>
