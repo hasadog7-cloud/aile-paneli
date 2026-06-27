@@ -3,235 +3,517 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aile ERM v1.11.0</title>
+    <title>Aile Operasyon ve Koordinasyon Mekanizması</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <style>
-        /* Hastalıklı/Verimsiz üye ve kritik durumlar için özel görsel geri bildirim sınıfları */
-        .system-degraded { background-color: rgba(239, 68, 68, 0.15); border: 1px solid rgb(239, 68, 68); }
-        .system-stable { background-color: rgba(34, 197, 94, 0.15); border: 1px solid rgb(34, 197, 94); }
-    </style>
-</head>
-<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
-
-    <div id="app-root" class="p-4 max-w-6xl mx-auto">
-        </div>
-
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 p-4 font-sans selection:bg-indigo-500/30">
+
+    <div id="auth-wall" class="fixed inset-0 bg-slate-950 z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-2xl max-w-sm w-full text-center space-y-4">
+            <h2 class="text-base font-black tracking-wider text-indigo-400">GÜVENLİK DOĞRULAMASI</h2>
+            <p class="text-xs text-slate-400">Lütfen koordinasyon oda şifresini giriniz.</p>
+            <input id="master-pin" type="password" placeholder="Oda Şifresi" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-center font-mono text-lg focus:outline-none focus:border-indigo-500">
+            <button onclick="sifreKontrol()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-xl text-xs transition">Odaya Bağlan</button>
+        </div>
+    </div>
+
+    <main id="main-panel" class="max-w-2xl mx-auto space-y-6 hidden">
+        
+        <header class="bg-slate-800 p-4 rounded-2xl border border-slate-700/60 flex justify-between items-center shadow-xl">
+            <div>
+                <h1 class="text-base font-black tracking-wider text-indigo-400">AİLE ERM v1.9.0</h1>
+                <p class="text-xs text-slate-400">Aktif Cihaz: <span id="current-user-label" class="text-amber-400 font-bold">Yükleniyor...</span></p>
+            </div>
+            <div id="system-mode" class="px-3 py-1 bg-emerald-950 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                Olağan Dönem
+            </div>
+        </header>
+
+        <section class="bg-slate-800 p-5 rounded-2xl border border-slate-700/60 shadow-xl space-y-4">
+            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400">📋 Detaylı Operasyonel Görev Listesi</h2>
+            
+            <div class="space-y-3" id="tasks-list"></div>
+
+            <div id="admin-task-form" class="hidden pt-4 border-t border-slate-700/50 space-y-2">
+                <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Hassas Zamanlı Görev Dağıtım Paneli</p>
+                <input id="task-title" type="text" placeholder="Görev Başlığı" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs">
+                <textarea id="task-detail" placeholder="Operasyonel yönergeler ve teknik detaylar..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs h-16"></textarea>
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="space-y-1">
+                        <label class="text-[10px] text-slate-500 uppercase">Sorumlu</label>
+                        <select id="task-user" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs"></select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] text-slate-500 uppercase">Hedef Tarih</label>
+                        <input id="task-date" type="date" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-1.5 text-xs text-slate-300">
+                    </div>
+                </div>
+
+                <div class="flex gap-2">
+                    <select id="task-shift" class="bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs w-1/3">
+                        <option value="08:00 - 12:00 (Sabah)">Sabah Vardiyası</option>
+                        <option value="12:00 - 17:00 (Öğle)">Öğle Vardiyası</option>
+                        <option value="17:00 - 22:00 (Akşam)">Akşam Vardiyası</option>
+                        <option value="Tüm Gün">Tüm Gün</option>
+                    </select>
+                    <select id="task-period" class="bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs w-1/3">
+                        <option value="Tek Seferlik">Tek Seferlik</option>
+                        <option value="Her Hafta Rutin">Her Hafta Rutin</option>
+                        <option value="Her Ay Rutin">Her Ay Rutin</option>
+                    </select>
+                    <select id="task-priority" class="bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs w-1/3 text-rose-400">
+                        <option value="Normal">Normal Öncelik</option>
+                        <option value="Önemli">Kritik / Ertelenemez 🚨</option>
+                    </select>
+                </div>
+                <button onclick="gorevEkle()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl text-xs transition">Görevi Hassas Takvime İşle</button>
+            </div>
+
+            <div class="pt-2 border-t border-slate-700/50 flex gap-2">
+                <button onclick="tetikleSaglikKrizi()" class="w-full bg-rose-950/40 text-rose-400 border border-rose-900/50 hover:bg-rose-900/40 font-bold py-2 rounded-xl text-xs transition">🚨 Sağlık Protokolü Bildir</button>
+                <button onclick="sistemiSifirla()" class="w-full bg-slate-700/50 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-xl text-xs transition">Normal Duruma Dön</button>
+            </div>
+        </section>
+
+        <section class="bg-slate-800 p-5 rounded-2xl border border-slate-700/60 shadow-xl space-y-3">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400">📜 Operasyon Kapanış Raporları (Detaylı Loglar)</h2>
+                <button onclick="logToggle()" class="text-[10px] text-indigo-400 hover:underline">Göster/Gizle</button>
+            </div>
+            <input id="log-ara" type="text" placeholder="🔍 Loglarda ara (İş adı, rapor detayı veya kapatan)..." oninput="arayuzCiz()" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs focus:outline-none focus:border-indigo-500 hidden">
+            <div id="log-box" class="hidden max-h-64 overflow-y-auto p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs text-slate-400 space-y-2 font-mono"></div>
+        </section>
+
+        <section class="bg-slate-800 p-5 rounded-2xl border border-slate-700/60 shadow-xl space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400">📊 Finansal Durum Defteri</h2>
+                <button id="admin-close-month" onclick="maliAyiKapat()" class="hidden bg-rose-950 text-rose-400 border border-rose-800/40 text-[9px] font-bold px-2 py-1 rounded transition hover:bg-rose-900">Ay Sonu Defterini Kapat</button>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-3">
+                <div class="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                    <span class="text-[9px] uppercase tracking-wider text-slate-500">Net Kasa Bakiyesi</span>
+                    <div id="mali-bakiye" class="text-xl font-mono font-black text-emerald-400">0 TL</div>
+                </div>
+                <div id="mali-borc-kutusu" class="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                    <span class="text-[9px] uppercase tracking-wider text-slate-500">Pasif Cari Yükümlülük (Borç)</span>
+                    <div id="mali-toplam-borc" class="text-xl font-mono font-black text-amber-500">0 TL</div>
+                </div>
+            </div>
+
+            <div class="flex gap-2">
+                <input id="mali-ara" type="text" placeholder="🔍 Defterde ara (Kategori, açıklama veya isim)..." oninput="arayuzCiz()" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs focus:outline-none focus:border-indigo-500">
+            </div>
+
+            <div class="space-y-1 max-h-40 overflow-y-auto bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-xs font-mono" id="mali-akis-listesi"></div>
+            <div class="space-y-1 max-h-32 overflow-y-auto bg-slate-950 p-2.5 rounded-xl border border-amber-900/20 text-xs font-mono hidden" id="mali-borc-listesi"></div>
+
+            <div id="admin-budget-form" class="hidden pt-3 border-t border-slate-700/50 space-y-2">
+                <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Mali Hareket İşleme Paneli</p>
+                <div class="flex gap-2">
+                    <select id="mali-tip" class="bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs w-1/3" onchange="maliFormGuncelle(this.value)">
+                        <option value="gider">Gider (-)</option>
+                        <option value="gelir">Gelir (+)</option>
+                        <option value="borc">Cari Borç (Yükümlülük)</option>
+                    </select>
+                    <select id="mali-kat" class="bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs w-1/3">
+                        <option value="Üretim/Tarım">Üretim/Tarım</option>
+                        <option value="Lojistik/Operasyon">Lojistik/Operasyon</option>
+                        <option value="Sabit Gider">Sabit Gider</option>
+                        <option value="Rutin/Ev">Rutin/Ev</option>
+                    </select>
+                    <select id="mali-sorumlu" class="bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs w-1/3"></select>
+                </div>
+                <div class="flex gap-2">
+                    <input id="budget-amount" type="number" placeholder="Tutar (TL)" class="bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs w-1/3 focus:outline-none">
+                    <input id="budget-desc" type="text" placeholder="Açıklama detayı..." class="bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs w-2/3 focus:outline-none">
+                </div>
+                <button onclick="maliKayitEkle()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-xl text-xs transition">Mali Hareketi Deftere İmzala</button>
+            </div>
+        </section>
+
+        <section class="bg-slate-800 p-5 rounded-2xl border border-slate-700/60 shadow-xl">
+            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">🏛️ Karar Konsensüs Paneli</h2>
+            <div id="active-proposal" class="p-4 bg-slate-950 rounded-xl border border-indigo-500/20 mb-4"></div>
+
+            <div id="admin-proposal-form" class="hidden pt-3 border-t border-slate-700/50 space-y-2">
+                <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Karar Taslağı ve Konsensüs Parametreleri</p>
+                <input id="proposal-text" type="text" placeholder="Yeni Karar Taslağı..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm focus:outline-none focus:border-indigo-500">
+                <div class="flex gap-2 items-center">
+                    <label class="text-[11px] text-slate-400 w-1/2">Gerekli Onay Eşiği (%):</label>
+                    <input id="proposal-threshold" type="number" min="50" max="100" value="65" class="bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs w-1/4 text-center font-mono font-bold text-indigo-400 focus:outline-none">
+                    <select id="proposal-ttl" class="bg-slate-950 border border-slate-700 rounded-xl p-2 text-xs w-1/4 focus:outline-none">
+                        <option value="24">24 Saat</option><option value="48">48 Saat</option><option value="72">72 Saat</option>
+                    </select>
+                </div>
+                <button onclick="yasaTaslagiYayinla()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl text-xs transition">Taslağı Canlıya Al</button>
+            </div>
+
+            <div class="mt-4 pt-2 border-t border-slate-700/40 text-center">
+                <button onclick="arsivToggle()" class="text-[10px] text-indigo-400 font-bold hover:underline">📜 Geçmiş Karar Arşivini Göster/Gizle</button>
+                <div id="archive-box" class="hidden mt-3 p-3 bg-slate-950 rounded-xl border border-slate-800 text-left space-y-2 text-xs text-slate-400"></div>
+            </div>
+        </section>
+
+        <div class="text-center">
+            <button onclick="localStorage.clear(); location.reload();" class="text-[10px] text-slate-600 hover:text-slate-400 transition underline">Cihaz ve Oda Kimliğini Sıfırla</button>
+        </div>
+    </main>
 
     <script>
-        // =========================================================================
-        // 1. GLOBAL CONFIGURATION & SCOPE FIX (Hatanın Kökten Çözümü)
-        // =========================================================================
-        const currentYear = new Date().getFullYear(); // Konsoldaki ReferenceError'u çözen kritik satır
-        const MAX_LOG_SIZE = 50;
-
-        const dogumYillari = {
-            "baba": 1984,
-            "anne": 1984,
-            "dede": 1946,
-            "alexa": 2012
+        const dogumYillari = { 1: 1984, 2: 1990, 3: 2013, 4: 2017, 5: 2012, 6: 2025 };
+        let devletVerisi = {
+            sistemModu: "Olağan Dönem", bakiye: 0, toplamBorc: 0, aktifBaraj: 65,
+            aktifTaslak: "Sistemin v1.9.0 Hassas Zamanlı Takvim ve Kapanış Raporlama katmanına yükseltilmesi.",
+            uyeler: {
+                1: { id: 1, isim: "Baba", rol: "Yürütme Başı", hasta: false },
+                2: { id: 2, isim: "Anne", rol: "Denetim", hasta: false },
+                3: { id: 3, isim: "Şükran", rol: "Lojistik Destek", hasta: false },
+                4: { id: 4, isim: "Ayça", rol: "Operasyon Takip", hasta: false },
+                5: { id: 5, isim: "Hulusi", rol: "Sistem Mimarı", hasta: false },
+                6: { id: 6, isim: "Efe", rol: "Gelişim Üyesi", hasta: false }
+            }
         };
 
-        // State Engine
-        let appState = {
-            currentActiveUser: "alexa", // Default giriş yapan kullanıcı (dinamik değiştirilebilir)
-            isAuth: true,
-            oda_PIN: "1234" 
-        };
+        let aktifCihazId = null; let gizliOdaYolu = null;
+        const firebaseConfig = { databaseURL: "https://devlet-i-aile-default-rtdb.europe-west1.firebasedatabase.app" };
+        firebase.initializeApp(firebaseConfig); const db = firebase.database();
 
-        // Firebase Yapılandırması (Kendi config bilgilerinle değiştir)
-        const firebaseConfig = {
-            databaseURL: "https://hasadog7-cloud-default-rtdb.firebaseio.com/" 
-        };
-        
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        const db = firebase.database();
-
-        // =========================================================================
-        // 2. YENİ MANTIKSAL ÇEKİRDEK (Filtreleme, Devretme Yasağı, Performans Analizi)
-        // =========================================================================
-        
-        // Dinamik Oy Gücü Hesaplama
-        function oyGucuHesapla(userKey) {
-            const dogumYili = dogumYillari[userKey];
-            if (!dogumYili) return 100;
-            return 100 + (currentYear - dogumYili);
+        window.onload = function() {
+            let savedPath = localStorage.getItem('aile_paneli_oda_yolu');
+            if(savedPath) {
+                gizliOdaYolu = savedPath; document.getElementById('auth-wall').classList.add('hidden');
+                document.getElementById('main-panel').classList.remove('hidden'); sistemBaslat();
+            }
         }
 
-        // Akıllı Performans Analiz Motoru ("Hastalıklı Kişi" Tespiti)
-        function analizEtAileSagligi(tumGorevler) {
-            let uyeIstatistikleri = {};
+        function sifreKontrol() {
+            const pin = document.getElementById('master-pin').value.trim();
+            if(pin.length > 0) {
+                gizliOdaYolu = "oda_" + pin; localStorage.setItem('aile_paneli_oda_yolu', gizliOdaYolu);
+                document.getElementById('auth-wall').classList.add('hidden'); document.getElementById('main-panel').classList.remove('hidden');
+                sistemBaslat();
+            }
+        }
+
+        function sistemBaslat() {
+            let kaydedilenId = localStorage.getItem('aile_paneli_user_id');
+            if (!kaydedilenId) {
+                let promptText = "Cihaz Sahibi Seçimi:\n";
+                Object.keys(devletVerisi.uyeler).forEach(k => { promptText += `${k} - ${devletVerisi.uyeler[k].isim}\n`; });
+                let secim = prompt(promptText);
+                if (["1", "2", "3", "4", "5", "6"].includes(secim)) {
+                    localStorage.setItem('aile_paneli_user_id', secim); kaydedilenId = secim;
+                } else { location.reload(); return; }
+            }
+            aktifCihazId = parseInt(kaydedilenId);
             
-            Object.values(tumGorevler).forEach(gorev => {
-                if (!gorev.assignedTo) return;
-                if (!uyeIstatistikleri[gorev.assignedTo]) {
-                    uyeIstatistikleri[gorev.assignedTo] = { toplam: 0, patlayan: 0 };
-                }
-                uyeIstatistikleri[gorev.assignedTo].toplam++;
-                if (gorev.status === "zaman-asimi") {
-                    uyeIstatistikleri[gorev.assignedTo].patlayan++;
-                }
+            if (aktifCihazId === 5) {
+                document.getElementById('admin-budget-form').classList.remove('hidden');
+                document.getElementById('admin-proposal-form').classList.remove('hidden');
+                document.getElementById('admin-task-form').classList.remove('hidden');
+                document.getElementById('admin-close-month').classList.remove('hidden');
+            }
+
+            document.getElementById('task-date').valueAsDate = new Date();
+            const tUser = document.getElementById('task-user'); const mSorumlu = document.getElementById('mali-sorumlu');
+            tUser.innerHTML = ''; mSorumlu.innerHTML = '';
+            Object.keys(devletVerisi.uyeler).forEach(k => {
+                const opt = `<option value="${k}">${devletVerisi.uyeler[k].isim}</option>`;
+                tUser.innerHTML += opt; mSorumlu.innerHTML += opt;
             });
 
-            let riskliUyeler = {};
-            Object.keys(dogumYillari).forEach(uye => {
-                const stats = uyeIstatistikleri[uye] || { toplam: 0, patlayan: 0 };
-                const failRate = stats.toplam > 0 ? (stats.patlayan / stats.toplam) : 0;
-                // Görevlerinin %30'undan fazlasını zaman aşımına uğratan kişi riskli (hastalıklı) kabul edilir
-                riskliUyeler[uye] = failRate >= 0.30 && stats.toplam > 0;
+            db.ref(gizliOdaYolu).on('value', (snapshot) => {
+                const data = snapshot.val(); if (data) { devletVerisi = data; if(devletVerisi.taslakBitisZamani && Date.now() > devletVerisi.taslakBitisZamani) { zamanAsimiKararKapat(); } } 
+                else { db.ref(gizliOdaYolu).set(devletVerisi); }
+                document.getElementById('current-user-label').innerText = devletVerisi.uyeler[aktifCihazId].isim; arayuzCiz();
             });
-            return riskliUyeler;
         }
 
-        // Odaklanmış Panel Filtreleme Motoru (Görünüm Kuralları)
-        function ilkPanelIcinGorevleriFiltrele(tumGorevler, aktifKullanici) {
-            let filtrelenmis = {};
-            Object.keys(tumGorevler).forEach(key => {
-                const gorev = tumGorevler[key];
-                // Kural: Görev KRİTİKSE herkeste gözükür, RUTİNSE sadece sahibinde gözükür.
-                if (gorev.seviye === "kritik" || gorev.assignedTo === aktifKullanici) {
-                    filtrelenmis[key] = gorev;
-                }
-            });
-            return filtrelenmis;
-        }
+        function arayuzCiz() {
+            const modBar = document.getElementById('system-mode'); modBar.innerText = devletVerisi.sistemModu;
+            modBar.className = devletVerisi.sistemModu === "Olağan Dönem" ? "px-3 py-1 bg-emerald-950 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-bold uppercase" : "px-3 py-1 bg-rose-950 text-rose-400 border border-rose-500/30 rounded-full text-[10px] font-bold uppercase";
 
-        // =========================================================================
-        // 3. UI RENDER MOTORU & FIREBASE ENTEGRASYONU (Satır 232-334 Refaktörü)
-        // =========================================================================
-        
-        function arayuzCiz(filtrelenmisGorevler, riskliUyeler, tumGorevler) {
-            const root = document.getElementById("app-root");
-            
-            let htmlContext = `
-                <div class="space-y-6">
-                    <header class="flex justify-between items-center border-b border-slate-700 pb-4">
-                        <div>
-                            <h1 class="text-2xl font-bold text-indigo-400">Aile ERM v1.11.0</h1>
-                            <p class="text-sm text-slate-400">Aktif Kullanıcı: <span class="text-slate-200 font-semibold">${appState.currentActiveUser.toUpperCase()}</span></p>
-                        </div>
-                        <div class="text-sm bg-slate-800 p-2 rounded border border-slate-700">
-                            Senin Oy Gücün: <span class="text-emerald-400 font-bold">${oyGucuHesapla(appState.currentActiveUser)}</span>
-                        </div>
-                    </header>
-
-                    <section class="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                        <h2 class="text-lg font-bold mb-4 text-slate-300 flex items-center gap-2">
-                            <span>📋 Ana Panel (Grevlerim & Kritik Görevler)</span>
-                        </h2>
-                        <div class="space-y-3">
-                            ${Object.keys(filtrelenmisGorevler).length === 0 ? '<p class="text-slate-500 text-sm">Aktif veya kritik görev bulunmuyor.</p>' : ''}
-                            
-                            ${Object.keys(filtrelenmisGorevler).map(key => {
-                                const g = filtrelenmisGorevler[key];
-                                const isKritik = g.seviye === "kritik";
-                                return `
-                                    <div class="p-3 rounded-lg ${isKritik ? 'border-l-4 border-amber-500 bg-slate-750' : 'bg-slate-900'} border border-slate-700 flex justify-between items-center">
-                                        <div>
-                                            <div class="flex items-center gap-2">
-                                                <span class="font-semibold">${g.title}</span>
-                                                ${isKritik ? '<span class="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded border border-amber-500/30">KRİTİK GÖREV</span>' : ''}
-                                            </div>
-                                            <p class="text-xs text-slate-400 mt-1">Sorumlu: ${g.assignedTo.toUpperCase()} | Durum: ${g.status}</p>
-                                        </div>
-                                        <div>
-                                            ${renderGorevAksiyonlari(key, g)}
-                                        </div>
+            const tasksDiv = document.getElementById('tasks-list'); tasksDiv.innerHTML = '';
+            if (devletVerisi.gorevler) {
+                Object.keys(devletVerisi.gorevler).forEach((key, index) => {
+                    const g = devletVerisi.gorevler[key]; const sorumlu = devletVerisi.uyeler[g.sorumluId];
+                    const tTarih = new Date(g.hedefTarih).toLocaleDateString('tr-TR');
+                    const bRenk = g.durum === "Ertelendi" ? "border-amber-600/60 bg-amber-950/10" : (sorumlu.hasta ? 'border-rose-900/40' : 'border-slate-800');
+                    
+                    tasksDiv.innerHTML += `
+                        <div class="p-3 bg-slate-950 rounded-xl border ${bRenk} space-y-2">
+                            <div class="flex justify-between items-start gap-2">
+                                <div class="space-y-1">
+                                    <div class="flex flex-wrap gap-1 items-center">
+                                        <span class="text-[9px] uppercase font-bold text-indigo-400 bg-indigo-950/40 px-1.5 py-0.5 rounded">${tTarih}</span>
+                                        <span class="text-[9px] uppercase font-bold text-cyan-400 bg-cyan-950/40 px-1.5 py-0.5 rounded">${g.vardiya}</span>
+                                        <span class="text-[9px] font-medium text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">${g.periyot}</span>
+                                        ${g.durum === "Ertelendi" ? '<span class="text-[9px] bg-amber-900/60 text-amber-300 px-1.5 py-0.5 rounded font-bold">[ERTELENDİ]</span>' : ''}
                                     </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    </section>
-
-                    <section class="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                        <details class="group">
-                            <summary class="list-none flex justify-between items-center font-bold text-slate-300 cursor-pointer select-none">
-                                <span>🔍 Detaylar: Aile Üyeleri & Performans Analizi</span>
-                                <span class="transition group-open:rotate-180">▼</span>
-                            </summary>
-                            
-                            <div class="mt-4 pt-4 border-t border-slate-700 space-y-4">
-                                <h3 class="text-sm font-semibold text-indigo-300">Sistem Sağlık ve Risk İndeksi</h3>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    ${Object.keys(dogumYillari).map(uye => {
-                                        const isHastalikli = riskliUyeler[uye];
-                                        return `
-                                            <div class="p-3 rounded-lg ${isHastalikli ? 'system-degraded' : 'system-stable'} flex justify-between items-center">
-                                                <div>
-                                                    <span class="font-bold text-sm block">${uye.toUpperCase()}</span>
-                                                    <span class="text-xs text-slate-300">Oy Ağırlığı: ${oyGucuHesapla(uye)}</span>
-                                                </div>
-                                                <span class="text-xs px-2 py-1 rounded font-semibold ${isHastalikli ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}">
-                                                    ${isHastalikli ? '⚠️ PERFORMANS RİSKİ (HASTALIKLI)' : '✅ STABİL HAREKET'}
-                                                </span>
-                                            </div>
-                                        `;
-                                    }).join('')}
+                                    <p class="text-xs font-bold ${g.öncelik === 'Önemli' ? 'text-rose-400' : 'text-slate-200'}">${g.tanim}</p>
+                                </div>
+                                <div class="flex items-center gap-1.5 shrink-0">
+                                    <span class="text-[10px] text-slate-400 font-medium">${sorumlu.isim}</span>
+                                    <button onclick="document.getElementById('task-det-${index}').classList.toggle('hidden')" class="bg-slate-800 text-[10px] px-2 py-1 rounded-md">Detay</button>
                                 </div>
                             </div>
-                        </details>
-                    </section>
-                </div>
-            `;
-            root.innerHTML = htmlContext;
-        }
+                            
+                            <div id="task-det-${index}" class="hidden p-2.5 bg-slate-900 rounded-lg text-xs text-slate-400 border border-slate-800/60 space-y-2">
+                                <p><strong class="text-slate-300">Yönerge:</strong> ${g.detay || 'Detay yok.'}</p>
+                                <div class="p-2 bg-slate-950 rounded border border-slate-800 space-y-1.5">
+                                    <p class="text-[10px] font-bold text-slate-400 uppercase">Görevi Kapatma ve Raporlama Alanı</p>
+                                    <input id="report-note-${key}" type="text" placeholder="İş sonu rapor notu giriniz (Zorunlu)..." class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-xs text-slate-200">
+                                    <div class="flex gap-1.5">
+                                        <button onclick="gorevTamamla('${key}')" class="w-full bg-emerald-700 hover:bg-emerald-600 text-white text-[10px] py-1.5 rounded font-bold transition">✓ Raporla ve Tamamla</button>
+                                        <button onclick="gorevDurumDegis('${key}', 'Ertelendi')" class="w-1/3 bg-amber-700/30 text-amber-400 border border-amber-700/40 text-[10px] py-1.5 rounded font-medium hover:bg-amber-700/40">Etele</button>
+                                        ${aktifCihazId === g.sorumluId ? `<button onclick="gorevDevret('${key}')" class="w-1/3 bg-slate-800 text-slate-400 text-[10px] py-1.5 rounded hover:bg-slate-700">Devret</button>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+            } else { tasksDiv.innerHTML = `<p class="text-xs text-slate-500 text-center py-2">Aktif operasyonel plan bulunmuyor.</p>`; }
 
-        // Katı Görev Aksiyonları (Devret butonu kaldırıldı, kaçış yok)
-        function renderGorevAksiyonlari(taskId, g) {
-            if (g.assignedTo !== appState.currentActiveUser) {
-                return `<span class="text-xs bg-slate-800 text-slate-400 p-1.5 rounded border border-slate-700">Gözlemci Modu</span>`;
-            }
+            // Gelişmiş Rapor Log Çizimi
+            const logBox = document.getElementById('log-box'); logBox.innerHTML = '';
+            const lArama = document.getElementById('log-ara').value.toLowerCase().trim();
+            if (devletVerisi.gorevLoglari) {
+                document.getElementById('log-ara').classList.remove('hidden');
+                Object.keys(devletVerisi.gorevLoglari).forEach(key => {
+                    const log = devletVerisi.gorevLoglari[key]; const d = new Date(log.tarih);
+                    const aramaMetni = `${log.isAdi} ${log.raporNotu} ${log.kapatan}`.toLowerCase();
+                    if(lArama === "" || aramaMetni.includes(lArama)) {
+                        logBox.innerHTML = `
+                        <div class="p-2.5 bg-slate-950 border border-slate-900 rounded-lg space-y-1">
+                            <div class="flex justify-between text-[10px] text-slate-500 border-b border-slate-900 pb-1">
+                                <span>📅 Kapanış: ${d.toLocaleDateString('tr-TR')} ${d.toLocaleTimeString('tr-TR')}</span>
+                                <span>Operatör: <strong class="text-indigo-400">${log.kapatan}</strong></span>
+                            </div>
+                            <p class="text-xs font-bold text-slate-300">📌 İş: ${log.isAdi}</p>
+                            <p class="text-[11px] text-slate-400 pl-2 border-l border-emerald-500/40 bg-emerald-950/5 p-1 rounded font-sans">
+                                <strong class="text-emerald-400 text-[10px] block uppercase font-mono">Kapanış Rapor Notu:</strong> ${log.raporNotu}
+                            </p>
+                            <p class="text-[10px] text-slate-500 italic">Orijinal Yönerge: ${log.orijinalDetay || 'Yok'}</p>
+                        </div>` + logBox.innerHTML;
+                    }
+                });
+            } else { logBox.innerHTML = `<span class="text-slate-600 block text-center py-2">Rapor kaydı bulunmuyor.</span>`; }
 
-            if (g.status === "aktif") {
-                return `
-                    <div class="flex gap-2 items-center">
-                        <input type="text" id="report-${taskId}" placeholder="Kapanış notu..." class="bg-slate-950 border border-slate-700 rounded p-1 text-xs text-slate-100 focus:outline-none focus:border-indigo-500" />
-                        <button onclick="goreviKapat('${taskId}')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded transition">Tamamla</button>
-                    </div>
-                `;
-            }
-            return `<span class="text-xs text-slate-400">${g.status.toUpperCase()}</span>`;
-        }
+            // Finans Çizimi
+            document.getElementById('mali-bakiye').innerText = `${(devletVerisi.bakiye || 0).toLocaleString('tr-TR')} TL`;
+            document.getElementById('mali-toplam-borc').innerText = `${(devletVerisi.toplamBorc || 0).toLocaleString('tr-TR')} TL`;
+            const mAramaKelimeleri = document.getElementById('mali-ara').value.toLowerCase().trim();
+            const mAkis = document.getElementById('mali-akis-listesi'); mAkis.innerHTML = '';
+            if (devletVerisi.maliLoglar) {
+                Object.keys(devletVerisi.maliLoglar).forEach(key => {
+                    const l = devletVerisi.maliLoglar[key]; const d = new Date(l.tarih); const satirMetni = `${l.kat} ${l.desc} ${l.isleyen}`.toLowerCase();
+                    if(mAramaKelimeleri === "" || satirMetni.includes(mAramaKelimeleri)) {
+                        const renk = l.tip === "gelir" ? "text-emerald-400" : "text-rose-400"; const isaret = l.tip === "gelir" ? "+" : "-";
+                        mAkis.innerHTML = `<div class="flex justify-between border-b border-slate-900 py-0.5"><span>[${d.toLocaleDateString('tr-TR')}] [${l.kat}] ${l.desc} (${l.isleyen})</span><span class="${renk} font-bold">${isaret}${l.tutar.toLocaleString('tr-TR')} TL</span></div>` + mAkis.innerHTML;
+                    }
+                });
+            } else { mAkis.innerHTML = '<span class="text-slate-600 text-center block">Mali hareket yok.</span>'; }
 
-        // Görev Kapatma Operasyonu (Zorunlu Kapanış Notu Kayıtlı)
-        function goreviKapat(taskId) {
-            const noteInput = document.getElementById(`report-${taskId}`);
-            if (!noteInput || !noteInput.value.trim()) {
-                alert("Mimarî Kural: Kapanış rapor notu girmeden görev kapatılamaz!");
-                return;
-            }
+            const mBorcList = document.getElementById('mali-borc-listesi'); mBorcList.innerHTML = '';
+            if(devletVerisi.aktifBorclar) {
+                document.getElementById('mali-borc-listesi').classList.remove('hidden');
+                Object.keys(devletVerisi.aktifBorclar).forEach(key => {
+                    const b = devletVerisi.aktifBorclar[key];
+                    mBorcList.innerHTML += `<div class="flex justify-between items-center border-b border-slate-900 py-1 text-amber-500"><span>[CARİ BORÇ] [${b.kat}] ${b.desc} -> ${b.tutar.toLocaleString('tr-TR')} TL</span>${aktifCihazId === 5 ? `<button onclick="borcKapat('${key}')" class="bg-amber-600 hover:bg-amber-500 text-slate-950 text-[9px] font-black px-1.5 py-0.5 rounded">ÖDENDİ</button>` : ''}</div>`;
+                });
+            } else { mBorcList.classList.add('hidden'); }
 
-            const kapanisNotu = noteInput.value.trim();
-            
-            db.ref(`gorevler/${taskId}`).update({
-                status: "tamamlandi",
-                reportNote: kapanisNotu,
-                resolvedAt: Date.now()
-            }).then(() => {
-                // Log bloating önlemli loglama tetiklenebilir
-                console.log(`Görev ${taskId} başarıyla kapatıldı.`);
+            // Karar Mekanizması
+            let barajEsigi = devletVerisi.aktifBaraj || 65;
+            let toplamOyGucu = 0; let kabulOyGucu = 0;
+            Object.keys(devletVerisi.uyeler).forEach(id => {
+                let oyGucu = 100 + (currentYear - (dogumYillari[id] || 2000));
+                toplamOyGucu += oyGucu; if (devletVerisi.oylar && devletVerisi.oylar[id]) kabulOyGucu += oyGucu;
             });
+            let oran = (kabulOyGucu / toplamOyGucu) * 100;
+            const cihazOyDurumu = devletVerisi.oylar ? devletVerisi.oylar[aktifCihazId] : false;
+
+            let kalanZamanMetni = "";
+            if(devletVerisi.taslakBitisZamani) {
+                let kalanDk = Math.round((devletVerisi.taslakBitisZamani - Date.now()) / 60000);
+                if(kalanDk > 60) { kalanZamanMetni = ` | Süre: Kalan ${Math.round(kalanDk/60)} sa`; }
+                else if(kalanDk > 0) { kalanZamanMetni = ` | Süre: Kalan ${kalanDk} dk`; }
+                else { kalanZamanMetni = ` | Süre doldu`; }
+            }
+
+            const proposalDiv = document.getElementById('active-proposal');
+            proposalDiv.innerHTML = `
+                <p class="text-xs font-semibold mb-3 text-slate-300">"${devletVerisi.aktifTaslak}"</p>
+                <div class="flex justify-between items-center text-xs mb-4">
+                    <span class="text-slate-400 text-[11px]">Onay Oranı: <strong class="text-indigo-400">%${oran.toFixed(1)}</strong> / Gerekli: <strong>%${barajEsigi}</strong></span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${oran >= barajEsigi ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'}">
+                        ${oran >= barajEsigi ? 'Baraj Geçildi' : 'Baraj Altı'}${kalanZamanMetni}
+                    </span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="oyVer(true)" class="w-full ${cihazOyDurumu === true ? 'bg-emerald-600 font-bold' : 'bg-slate-800 text-slate-400'} text-xs py-2 rounded-xl">ONAYLA</button>
+                    <button onclick="oyVer(false)" class="w-full ${cihazOyDurumu === false ? 'bg-rose-600 font-bold' : 'bg-slate-800 text-slate-400'} text-xs py-2 rounded-xl">REDDET</button>
+                </div>`;
+
+            const archiveBox = document.getElementById('archive-box'); archiveBox.innerHTML = '';
+            if (devletVerisi.gecmisOylamalar) {
+                Object.keys(devletVerisi.gecmisOylamalar).forEach(k => {
+                    const hist = devletVerisi.gecmisOylamalar[k];
+                    archiveBox.innerHTML += `<div class="p-2 bg-slate-900 border border-slate-800/40 rounded-lg mb-1"><p class="font-medium text-slate-300">"${hist.taslak}"</p><p class="text-[10px] text-slate-500 mt-0.5">Sonuç: <span class="text-indigo-400 font-bold">${hist.sonuc}</span></p></div>`;
+                });
+            } else { archiveBox.innerHTML = "Arşiv temiz."; }
         }
 
-        // =========================================================================
-        // 4. MAIN FIREBASE SNAPSHOT LOOP (Satır 232 Akışı)
-        // =========================================================================
-        db.ref("gorevler").on("value", (snapshot) => {
-            const tumGorevler = snapshot.val() || {};
-            
-            // 1. Algoritmik analiz tetikle (Hastalıklı kişi bulma)
-            const riskliUyeler = analizEtAileSagligi(tumGorevler);
-            
-            // 2. Kullanıcı bazlı ve kritiklik tabanlı filtrele
-            const filtrelenmisGorevler = ilkPanelIcinGorevleriFiltrele(tumGorevler, appState.currentActiveUser);
-            
-            // 3. Güvenli şekilde DOM'a bas
-            arayuzCiz(filtrelenmisGorevler, riskliUyeler, tumGorevler);
-        });
+        // İŞ MANITIĞI MOTORU FONKSİYONLARI
+        function oyVer(durum) { db.ref(`${gizliOdaYolu}/oylar/${aktifCihazId}`).set(durum); }
+        
+        function maliFormGuncelle(val) {
+            const katSelect = document.getElementById('mali-kat');
+            if(val === "borc") { katSelect.innerHTML = '<option value="Dış Borç/Firma">Dış Borç/Firma</option><option value="Kişisel Borç">Kişisel Borç</option>'; } 
+            else { katSelect.innerHTML = '<option value="Üretim/Tarım">Üretim/Tarım</option><option value="Lojistik/Operasyon">Lojistik/Operasyon</option><option value="Sabit Gider">Sabit Gider</option><option value="Rutin/Ev">Rutin/Ev</option>'; }
+        }
 
+        function maliKayitEkle() {
+            const tip = document.getElementById('mali-tip').value; const kat = document.getElementById('mali-kat').value;
+            const sorumluIdx = document.getElementById('mali-sorumlu').value; const amnt = parseFloat(document.getElementById('budget-amount').value);
+            const desc = document.getElementById('budget-desc').value.trim(); const isleyenIsim = devletVerisi.uyeler[sorumluIdx].isim;
+
+            if (amnt && desc) {
+                let yeniBakiye = devletVerisi.bakiye || 0; let yeniBorc = devletVerisi.toplamBorc || 0;
+                if (tip === "gelir") yeniBakiye += amnt; else if (tip === "gider") yeniBakiye -= amnt; else if (tip === "borc") yeniBorc += amnt;
+
+                const logData = { tutar: amnt, desc: desc, tip: tip, kat: kat, isleyen: isleyenIsim, tarih: firebase.database.ServerValue.TIMESTAMP };
+                let updates = {}; updates[`${gizliOdaYolu}/bakiye`] = yeniBakiye; updates[`${gizliOdaYolu}/toplamBorc`] = yeniBorc;
+                
+                if (tip === "borc") {
+                    let newBorcKey = db.ref().child(`${gizliOdaYolu}/aktifBorclar`).push().key; updates[`${gizliOdaYolu}/aktifBorclar/${newBorcKey}`] = logData;
+                } else {
+                    let newMaliKey = db.ref().child(`${gizliOdaYolu}/maliLoglar`).push().key; updates[`${gizliOdaYolu}/maliLoglar/${newMaliKey}`] = logData;
+                }
+                db.ref().update(updates);
+                document.getElementById('budget-amount').value = ''; document.getElementById('budget-desc').value = '';
+            }
+        }
+
+        function borcKapat(key) {
+            const b = devletVerisi.aktifBorclar[key];
+            let yeniBakiye = (devletVerisi.bakiye || 0) - b.tutar; let yeniBorc = (devletVerisi.toplamBorc || 0) - b.tutar;
+            let updates = {}; updates[`${gizliOdaYolu}/bakiye`] = yeniBakiye; updates[`${gizliOdaYolu}/toplamBorc`] = yeniBorc; updates[`${gizliOdaYolu}/aktifBorclar/${key}`] = null;
+            let newMaliKey = db.ref().child(`${gizliOdaYolu}/maliLoglar`).push().key;
+            updates[`${gizliOdaYolu}/maliLoglar/${newMaliKey}`] = { tutar: b.tutar, desc: `[Borç Ödendi] ${b.desc}`, tip: "gider", kat: b.kat, isleyen: devletVerisi.uyeler[aktifCihazId].isim, tarih: firebase.database.ServerValue.TIMESTAMP };
+            db.ref().update(updates);
+        }
+
+        function maliAyiKapat() {
+            if(!confirm("Bu ayın tüm gelir/gider loglarını arşive aktarıp listeyi sıfırlamak istediğinize emin misiniz?")) return;
+            let newArchKey = db.ref().child(`${gizliOdaYolu}/maliArsivler`).push().key;
+            let updates = {};
+            updates[`${gizliOdaYolu}/maliArsivler/${newArchKey}`] = { dönem: new Date().toLocaleDateString('tr-TR', {month: 'long', year: 'numeric'}), kapatan: devletVerisi.uyeler[aktifCihazId].isim, kapanisBakiyesi: devletVerisi.bakiye, loglar: devletVerisi.maliLoglar || {} };
+            updates[`${gizliOdaYolu}/maliLoglar`] = null; db.ref().update(updates);
+        }
+
+        function gorevEkle() {
+            const title = document.getElementById('task-title').value.trim(); const detail = document.getElementById('task-detail').value.trim();
+            const user = parseInt(document.getElementById('task-user').value); const dateVal = document.getElementById('task-date').value;
+            const shift = document.getElementById('task-shift').value; const period = document.getElementById('task-period').value;
+            const priority = document.getElementById('task-priority').value;
+
+            if (title && dateVal) {
+                let newGorevKey = db.ref().child(`${gizliOdaYolu}/gorevler`).push().key;
+                db.ref(`${gizliOdaYolu}/gorevler/${newGorevKey}`).set({
+                    tanim: title, detay: detail, sorumluId: user, orijinalSorumlu: user,
+                    hedefTarih: dateVal, vardiya: shift, periyot: period, öncelik: priority, durum: "Aktif"
+                });
+                document.getElementById('task-title').value = ''; document.getElementById('task-detail').value = '';
+            }
+        }
+
+        function gorevTamamla(key) {
+            const rNote = document.getElementById(`report-note-${key}`).value.trim();
+            if(!rNote) { alert("İşi kapatmak için operasyon rapor notu girilmesi zorunludur!"); return; }
+            const g = devletVerisi.gorevler[key];
+            let newLogKey = db.ref().child(`${gizliOdaYolu}/gorevLoglari`).push().key;
+            let updates = {};
+            updates[`${gizliOdaYolu}/gorevLoglari/${newLogKey}`] = {
+                isAdi: g.tanim, orijinalDetay: g.detay, raporNotu: rNote,
+                kapatan: devletVerisi.uyeler[aktifCihazId].isim, tarih: firebase.database.ServerValue.TIMESTAMP
+            };
+            updates[`${gizliOdaYolu}/gorevler/${key}`] = null; db.ref().update(updates);
+        }
+
+        function gorevDurumDegis(key, yeniDurum) { db.ref(`${gizliOdaYolu}/gorevler/${key}/durum`).set(yeniDurum); }
+        function gorevDevret(key) { let siradakiSorumlu = (aktifCihazId % 6) + 1; db.ref(`${gizliOdaYolu}/gorevler/${key}/sorumluId`).set(siradakiSorumlu); }
+
+        function yasaTaslagiYayinla() {
+            const text = document.getElementById('proposal-text').value.trim();
+            const threshold = parseInt(document.getElementById('proposal-threshold').value) || 65;
+            const ttlHours = parseInt(document.getElementById('proposal-ttl').value) || 24;
+
+            if (text) {
+                let currentYear = new Date().getFullYear();
+                let toplamOyGucu = 0; let kabulOyGucu = 0;
+                Object.keys(devletVerisi.uyeler).forEach(id => {
+                    let oyGucu = 100 + (currentYear - (dogumYillari[id] || 2000));
+                    toplamOyGucu += oyGucu; if (devletVerisi.oylar && devletVerisi.oylar[id]) kabulOyGucu += oyGucu;
+                });
+                let oran = (kabulOyGucu / toplamOyGucu) * 100;
+                let newOylamaKey = db.ref().child(`${gizliOdaYolu}/gecmisOylamalar`).push().key;
+                const aktifBarajEsigi = devletVerisi.aktifBaraj || 65;
+
+                let updates = {};
+                updates[`${gizliOdaYolu}/gecmisOylamalar/${newOylamaKey}`] = { taslak: devletVerisi.aktifTaslak, sonuc: oran >= aktifBarajEsigi ? `Kabul (%${oran.toFixed(1)})` : `Red (%${oran.toFixed(1)})` };
+                updates[`${gizliOdaYolu}/aktifTaslak`] = text;
+                updates[`${gizliOdaYolu}/aktifBaraj`] = threshold;
+                updates[`${gizliOdaYolu}/taslakBitisZamani`] = Date.now() + (ttlHours * 3600000);
+                updates[`${gizliOdaYolu}/oylar`] = { 1: false, 2: false, 3: false, 4: false, 5: false, 6: false };
+                db.ref().update(updates); document.getElementById('proposal-text').value = '';
+            }
+        }
+
+        function zamanAsimiKararKapat() {
+            let currentYear = new Date().getFullYear();
+            let toplamOyGucu = 0; let kabulOyGucu = 0;
+            Object.keys(devletVerisi.uyeler).forEach(id => {
+                let oyGucu = 100 + (currentYear - (dogumYillari[id] || 2000));
+                toplamOyGucu += oyGucu; if (devletVerisi.oylar && devletVerisi.oylar[id]) kabulOyGucu += oyGucu;
+            });
+            let oran = (kabulOyGucu / toplamOyGucu) * 100;
+            let newOylamaKey = db.ref().child(`${gizliOdaYolu}/gecmisOylamalar`).push().key;
+            const aktifBarajEsigi = devletVerisi.aktifBaraj || 65;
+
+            let updates = {};
+            updates[`${gizliOdaYolu}/gecmisOylamalar/${newOylamaKey}`] = { taslak: devletVerisi.aktifTaslak, sonuc: oran >= aktifBarajEsigi ? `Zaman Aşımı: Kabul (%${oran.toFixed(1)})` : `Zaman Aşımı: Red (%${oran.toFixed(1)})` };
+            updates[`${gizliOdaYolu}/aktifTaslak`] = "Aktif taslak yok. Yeni bir oylama bekleniyor.";
+            updates[`${gizliOdaYolu}/taslakBitisZamani`] = null;
+            updates[`${gizliOdaYolu}/oylar`] = { 1: false, 2: false, 3: false, 4: false, 5: false, 6: false };
+            db.ref().update(updates);
+        }
+
+        function tetikleSaglikKrizi() {
+            let updates = {}; updates[`${gizliOdaYolu}/sistemModu`] = "Sağlık Protokolü!"; updates[`${gizliOdaYolu}/uyeler/${aktifCihazId}/hasta`] = true;
+            if (devletVerisi.gorevler) {
+                Object.keys(devletVerisi.gorevler).forEach(key => {
+                    if(devletVerisi.gorevler[key].sorumluId === aktifCihazId) { updates[`${gizliOdaYolu}/gorevler/${key}/sorumluId`] = (aktifCihazId % 6) + 1; }
+                });
+            }
+            db.ref().update(updates);
+        }
+
+        function sistemiSifirla() {
+            let updates = {}; updates[`${gizliOdaYolu}/sistemModu`] = "Olağan Dönem";
+            Object.keys(devletVerisi.uyeler).forEach(id => { updates[`${gizliOdaYolu}/uyeler/${id}/hasta`] = false; });
+            if (devletVerisi.gorevler) {
+                Object.keys(devletVerisi.gorevler).forEach(key => { updates[`${gizliOdaYolu}/gorevler/${key}/sorumluId`] = devletVerisi.gorevler[key].orijinalSorumlu; updates[`${gizliOdaYolu}/gorevler/${key}/durum`] = "Aktif"; });
+            }
+            db.ref().update(updates);
+        }
+
+        function logToggle() { document.getElementById('log-box').classList.toggle('hidden'); }
+        function arsivToggle() { document.getElementById('archive-box').classList.toggle('hidden'); }
     </script>
 </body>
 </html>
